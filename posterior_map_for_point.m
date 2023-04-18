@@ -1,0 +1,63 @@
+function posterior = posterior_map_for_point(RF_center_points, radii, RF_params, rangeX, rangeY, test_point, N_grid, N_draws)
+N_cells = size(RF_center_points,1);
+
+xvals = linspace(rangeX(1),rangeX(2),N_grid);
+yvals = linspace(rangeY(1),rangeY(2),N_grid);
+activation_map = zeros(N_grid,N_grid,N_draws); %single numbers
+
+mv_dist = struct('mu', 0, 'sigma', 0);
+norm_6D = repmat(mv_dist,N_grid,N_grid);
+
+for c=1:N_cells
+    for x=1:N_grid
+        for y=1:N_grid
+            activation_vec = activation_for_point(RF_center_points,radii,'gauss',RF_params,[xvals(x) yvals(y)]);
+            norm_6D(x,y) = multi_norm_from_independent_norms(activation_vec);
+        end
+    end
+end
+
+for i=1:N_draws
+    fprintf('Draw %d of %d\n', i, N_draws)
+    activation_vec = zeros(1,N_cells);
+    %activation_ind = zeros(N_cells,1);
+    for c=1:N_cells
+        d = pdist2(RF_center_points(c,:),test_point);
+        sd = radii(c)/2; %radius is 2 sd of Gauss
+        activation_vec(c) = abs((1/(2*pi*sd^2)) * exp(-d^2/(2*sd^2)) + ... %gaussian RF part = mean
+            random('Normal',0,RF_params(c).noise_sd)); %noise part = s.d.
+        %[~, activation_ind(c)] = min(abs(pdf_x - activation_vec(c)));      
+    end
+
+
+
+%keyboard;
+    for x=1:N_grid
+        for y=1:N_grid           
+            numerator = prod(mvnpdf(activation_vec, norm_6D(x,y).mu, norm_6D(x,y).sigma));
+            denominator = eval_mean_mvnorm_6D_at_point(norm_6D, activation_vec);
+            activation_map(x,y,i) = numerator/denominator;
+
+% % 
+% %             numerator = prod(pdf_6D_each{z}(activation_ind(1), ...
+% %                 activation_ind(2), ...
+% %                 activation_ind(3), ...
+% %                 activation_ind(4), ...
+% %                 activation_ind(5), ...
+% %                 activation_ind(6) ...
+% %                 ));
+%             denominator = prod(pdf_6D_full(activation_ind(1), ...
+%                 activation_ind(2), ...
+%                 activation_ind(3), ...
+%                 activation_ind(4), ...
+%                 activation_ind(5), ...
+%                 activation_ind(6) ...
+%                 ));
+%             
+%             z=z+1;            
+        end
+    end
+end
+
+posterior = mean(activation_map,3);
+posterior = posterior ./ sum(posterior,'all');
